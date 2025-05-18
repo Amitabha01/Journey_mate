@@ -1,0 +1,36 @@
+name: journey_mate_app_v1
+description: "A new Flutter project."
+publish_to: 'none'
+version: 0.1.0
+
+environment:
+  sdk: ^3.7.2
+
+dependencies:
+  flutter:
+    sdk: flutter
+  cupertino_icons:
+  firebase_core:
+  firebase_auth:
+  firebase_database:
+  firebase_storage:
+  firebase_data_connect:
+  connectivity_plus:
+  mapbox_maps_flutter: ^2.8.0
+  mapbox_search: 
+  geolocator: ^14.0.0
+  flutter_dotenv:
+  http: 
+  permission_handler:
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  flutter_lints: ^5.0.0
+
+flutter:
+  uses-material-design: true
+  assets:
+    - assets/images/
+    - .env
+  
