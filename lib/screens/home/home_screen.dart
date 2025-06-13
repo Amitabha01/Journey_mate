@@ -1,12 +1,33 @@
 import 'dart:async';
+import 'dart:typed_data';
+import 'dart:convert';
+// ignore: unused_import
+import 'package:firebase_core/firebase_core.dart';
+import 'package:http/http.dart' as http;
+import 'package:firebase_auth/firebase_auth.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:firebase_database/firebase_database.dart';
 
 import 'package:flutter/material.dart';
+import 'dart:ui' as ui;
+import 'package:flutter/services.dart';
 import 'package:geolocator/geolocator.dart' as gl;
 import 'package:journey_mate_app_v1/methods/common_connection_methods.dart';
+//import 'package:journey_mate_app_v1/screens/rides/create_ride_screen.dart' as create_ride;
+//import 'package:journey_mate_app_v1/widgets/loading_dialouge.dart';
+import 'package:flutter_dotenv/flutter_dotenv.dart';
 import 'package:mapbox_maps_flutter/mapbox_maps_flutter.dart' as mp;
+// ignore: unused_import
+import 'package:mapbox_search/mapbox_search.dart';
 import 'package:permission_handler/permission_handler.dart';
 
+import '../../services/ride_service.dart';
+import '../../models/ride_model.dart';
+import '../rides/your_rides_screen.dart' as rides_screen;
+import '../rides/search_ride_screen.dart';
 
+
+final String mapboxApiKey = dotenv.env["MAPBOX_ACCESS_TOKEN_KEY"] ?? "";
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
@@ -16,10 +37,14 @@ class HomeScreen extends StatefulWidget {
 }
 
 class _HomeScreenState extends State<HomeScreen> {
-
   mp.MapboxMap? mapboxMapController;
 
   StreamSubscription? userPositionStream;
+
+  final RideService _rideService = RideService();
+  late Stream<List<RideModel>> rideStream;
+
+  List<RideModel> _rides = [];
 
   @override
   void dispose() {
@@ -28,44 +53,128 @@ class _HomeScreenState extends State<HomeScreen> {
     mapboxMapController?.dispose();
   }
 
-
   @override
   void initState() {
-    
     super.initState();
     print("HomeScreen initialized");
 
-    _setupPositionTraking();  //requesting location permission
-   
+    _setupPositionTraking(); // Requesting location permission
+    _fetchRides(); // Fetch rides when the home screen is initialized
+
+    rideStream = RideService().getAvailableRides(); // Initialize the ride stream
+  }
+
+  Future<void> _fetchRides() async {
+
+    final commonMethods = CommonMethods();
+
+    // Check internet connectivity
+    await commonMethods.checkConnectivity(context);
+    
+
+    _rideService.getAvailableRides().listen((rides) {
+      final now = DateTime.now();
+
+      // Debug log to confirm rides are being fetched
+      logger.i('Fetched rides: ${rides.length}');
+
+      for (var ride in rides) {
+        logger.i('Ride: ${ride.toMap()}'); // Assuming this logger is from ride_model
+      }
+      
+      // Filter out expired rides
+      final nonExpiredRides = rides.where((ride) {
+        final rideDateTime = DateTime.parse('${ride.journeyDate} ${ride.journeyTime}');
+        return rideDateTime.isAfter(now);
+      }).toList();
+
+      // Debug log to confirm filtering
+      logger.i('Non-expired rides: ${nonExpiredRides.length}');
+
+      setState(() {
+        _rides = nonExpiredRides;
+
+        // Debug log to confirm the rides list
+        logger.i('Updated _rides list: $_rides');
+      });
+    });
   }
 
 
+  Future<void> _fetchUserRidesAndNavigate(BuildContext context) async {
+    final currentUser = FirebaseAuth.instance.currentUser;
+    if (currentUser == null) {
+      debugPrint('No user is logged in.');
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('User not logged in')),
+      );
+      return;
+    }
+
+    final userId = currentUser.uid;
+
+    try {
+      // Fetch all available rides
+      final rides = await RideService().getAvailableRides().first;
+
+      // Filter rides where the user is the driver or a passenger
+      final userRides = rides.where((ride) {
+        final isDriver = ride.driverId == userId;
+        final isPassenger = ride.passengerIds.contains(userId);
+        debugPrint('Ride: ${ride.rideId}, isDriver: $isDriver, isPassenger: $isPassenger');
+        return isDriver || isPassenger;
+      }).toList();
+
+      debugPrint('Filtered user rides: ${userRides.length}');
+
+      if (userRides.isEmpty) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('No rides found for the current user')),
+        );
+        return;
+      }
+
+      if (context.mounted) {
+        Navigator.push(
+          context,
+          MaterialPageRoute(
+            builder: (_) => rides_screen.YourRidesScreen(rides: userRides),
+          ),
+        );
+      }
+    } catch (e) {
+      debugPrint('Error fetching user rides: $e');
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Failed to fetch your rides')),
+      );
+    }
+  }
+
   Future<void> _setupPositionTraking() async {
-
     bool servicesEnabled = await gl.Geolocator.isLocationServiceEnabled();
-  
-    if (!servicesEnabled) {
 
+    if (!servicesEnabled) {
       print("No No location not avalable. Please enable them.");
 
-        if (mounted) {
-          showDialog(
-            context: context,
-            builder: (context) => AlertDialog(
-              title: const Text("Location Service Disabled"),
-              content: const Text("Location services are disabled. Please enable them in settings."),
-              actions: [
-                TextButton(
-                  onPressed: () {
-                    Navigator.of(context).pop();
-                    gl.Geolocator.openLocationSettings();
-                  },
+      if (mounted) {
+        showDialog(
+          context: context,
+          builder: (context) => AlertDialog(
+            title: const Text("Location Service Disabled"),
+            content: const Text(
+                "Location services are disabled. Please enable them in settings."),
+            actions: [
+              TextButton(
+                onPressed: () {
+                  Navigator.of(context).pop();
+                  gl.Geolocator.openLocationSettings();
+                },
                 child: const Text("Open Settings"),
               ),
-              ],
-            ),
-          );
-        } 
+            ],
+          ),
+        );
+      }
 
       return;
     }
@@ -73,158 +182,309 @@ class _HomeScreenState extends State<HomeScreen> {
     gl.LocationPermission permission = await gl.Geolocator.checkPermission();
 
     if (permission == gl.LocationPermission.denied) {
-
       permission = await gl.Geolocator.requestPermission();
 
       if (permission == gl.LocationPermission.denied) {
-
         print("Location permission denied");
 
         return;
-
       }
     }
 
     if (permission == gl.LocationPermission.deniedForever) {
-      print("Location permission permanently denied. Please enable it in settings.");
+      print("Location permission permanently denied.");
 
-        if (mounted) {
-          showDialog(
-            context: context,
-            builder: (context) => AlertDialog(
-              title: const Text("Permission Required"),
-              content: const Text("Location permission is permanently denied. Please enable it in app settings."),
-              actions: [
-                TextButton(
-                  onPressed: () {
-                    Navigator.of(context).pop();
-                    openAppSettings();
-                  },
-                  child: const Text("Open Settings"),
-                ),
-              ],
-            ),
-          );
-        }
+      if (mounted) {
+        showDialog(
+          context: context,
+          builder: (context) => AlertDialog(
+            title: const Text("Permission Required"),
+            content: const Text(
+                "Location permission is permanently denied. Please enable it in app settings."),
+            actions: [
+              TextButton(
+                onPressed: () {
+                  Navigator.of(context).pop();
+                  openAppSettings();
+                },
+                child: const Text("Open Settings"),
+              ),
+            ],
+          ),
+        );
+      }
 
       return;
     }
 
     gl.LocationSettings locationSettings = gl.LocationSettings(
+      accuracy: gl.LocationAccuracy.high,
+      distanceFilter: 100,
+    );
 
-        accuracy: gl.LocationAccuracy.high,
-        distanceFilter: 100,
-      
-      );
+    userPositionStream?.cancel();
 
-      userPositionStream?.cancel();
+    userPositionStream = gl.Geolocator.getPositionStream(
+        locationSettings: locationSettings).listen(
+      (gl.Position? position) {
+        if (position != null && mapboxMapController != null) {
+          mapboxMapController?.setCamera(
+            mp.CameraOptions(
+              zoom: 13,
+              center: mp.Point(
+                coordinates: mp.Position(position.longitude, position.latitude),
+              ),
+            ),
+          );
 
-      userPositionStream = gl.Geolocator.getPositionStream(locationSettings: locationSettings).listen(
-        (gl.Position? position) {
-
-          if (position != null) {
-            CommonMethods().displaySnackBar(context, position.toString());
-          }
-        },
-      );
-
+          CommonMethods().displaySnackBar(context, position.toString());
+        }
+      },
+    );
 
     // If permissions are granted, you can now access the user's location
     gl.Position position = await gl.Geolocator.getCurrentPosition();
     print("User's location: ${position.latitude}, ${position.longitude}");
-
   }
 
+  Future<Uint8List> loadHQRedMarkerImage() async {
+    var byteData = await rootBundle.load("assets/images/1000521835.png");
 
-  void _onMapCreated(mp.MapboxMap controller) async{
+    return byteData.buffer.asUint8List();
+  }
 
+  void _onMapCreated(mp.MapboxMap controller) async {
     setState(() {
-
       mapboxMapController = controller;
-      
     });
 
     // Check if permissions were granted (just in case)
     gl.LocationPermission permission = await gl.Geolocator.checkPermission();
-    
+
+    // Logic for displaying the user's location
+
     if (permission == gl.LocationPermission.whileInUse ||
-        permission == gl.LocationPermission.always ) {
-          await mapboxMapController?.location.updateSettings(
-
-            mp.LocationComponentSettings(
-              enabled: true,
-              showAccuracyRing: true,
-              pulsingEnabled: true,
-            ),
-
-          );
-      } else {
-
+        permission == gl.LocationPermission.always) {
+      await mapboxMapController?.location.updateSettings(
+        mp.LocationComponentSettings(
+          enabled: true,
+          showAccuracyRing: true,
+          pulsingEnabled: true,
+        ),
+      );
+    } else {
       print("Location permission not granted");
-
     }
-    
+
+    // Remove hardcoded marker logic
+    // Markers and routes will now be dynamically added using `_showRouteOnMap`
   }
 
+  Future<void> _showRouteOnMap(mp.Position origin, mp.Position destination) async {
+    if (mapboxMapController == null) {
+      
+      debugPrint('MapboxMapController is not initialized');
+
+      return;
+    }
+
+    // Add markers for origin and destination
+    final pointAnnotationManager = await mapboxMapController?.annotations.createPointAnnotationManager();
+
+    // Add origin marker
+    final originMarker = mp.PointAnnotationOptions(
+      geometry: mp.Point(coordinates: origin),
+      iconSize: 0.1,
+      image: await loadHQRedMarkerImage(),
+    );
+    pointAnnotationManager?.create(originMarker);
+
+    // Add destination marker
+    final destinationMarker = mp.PointAnnotationOptions(
+      geometry: mp.Point(coordinates: destination),
+      iconSize: 0.1,
+      image: await loadHQRedMarkerImage(),
+    );
+    pointAnnotationManager?.create(destinationMarker);
+
+    // Fetch and draw the route
+    final routeData = await _fetchRoute(origin, destination);
+    if (routeData != null) {
+      final coordinates = routeData['coordinates'] as List<mp.Position>;
+
+      // Draw the route on the map
+      final lineAnnotationManager = await mapboxMapController?.annotations.createPolylineAnnotationManager();
+      final lineOptions = mp.PolylineAnnotationOptions(
+        geometry: mp.LineString(coordinates: coordinates),
+        lineColor: Colors.blue.value,
+        lineWidth: 5.0,
+      );
+      lineAnnotationManager?.create(lineOptions);
+
+      // Calculate the center point of the route
+      final double centerLat = (origin.lat + destination.lat) / 2;
+      final double centerLng = (origin.lng + destination.lng) / 2;
+
+      // Calculate the zoom level based on the distance between origin and destination
+      final double distance = gl.Geolocator.distanceBetween(
+        origin.lat.toDouble(),
+        origin.lng.toDouble(),
+        destination.lat.toDouble(),
+        destination.lng.toDouble(),
+      );
+      final double zoomLevel = _calculateZoomLevel(distance);
+
+      // Adjust the camera to focus on the route
+      mapboxMapController?.flyTo(
+        mp.CameraOptions(
+          center: mp.Point(coordinates: mp.Position(centerLng, centerLat)),
+          zoom: zoomLevel,
+        ),
+        mp.MapAnimationOptions(duration: 1000),
+      );
+    }
+  }
+
+  // Helper method to calculate zoom level based on distance
+  double _calculateZoomLevel(double distance) {
+    if (distance < 1000) {
+      return 14.0; // Close range
+    } else if (distance < 5000) {
+      return 12.0; // Medium range
+    } else if (distance < 10000) {
+      return 10.0; // Long range
+    } else {
+      return 8.0; // Very long range
+    }
+  }
+
+  // Dummy implementation of _fetchRoute. Replace with actual API call if needed.
+  Future<Map<String, dynamic>?> _fetchRoute(mp.Position origin, mp.Position destination) async {
+    debugPrint('Fetching route: Origin = $origin, Destination = $destination');
+    final url =
+        'https://api.mapbox.com/directions/v5/mapbox/driving/${origin.lng},${origin.lat};${destination.lng},${destination.lat}?geometries=geojson&access_token=$mapboxApiKey';
+
+    try {
+      final response = await http.get(Uri.parse(url));
+
+      if (response.statusCode == 200) {
+        final data = json.decode(response.body);
+
+        if (data['routes'] == null || data['routes'].isEmpty) {
+          debugPrint('No routes found in the API response');
+          return null;
+        }
+
+        final route = data['routes'][0];
+        final coordinates = route ['geometry']['coordinates'] as List;
+
+        // Convert coordinates to List<mp.Position>
+        final parsedCoordinates = coordinates.map<mp.Position>((coord) {
+          return mp.Position(coord[0] as double, coord[1] as double);
+        }).toList();
+
+        final distance = route['distance'] / 1000; // Convert to kilometers
+        final duration = route['duration'] / 60; // Convert to minutes
+
+         debugPrint('Route fetched successfully: Distance = $distance km, Duration = $duration mins');
+
+        return {
+          //'coordinates': coordinates.map((coord) => mp.Position(coord[0], coord[1])).toList(),
+          'coordinates': parsedCoordinates,
+          'distance': distance,
+          'duration': duration,
+        };
+
+      } else {
+        throw Exception('Failed to fetch route');
+      }
+    } catch (e) {
+      debugPrint('Error fetching route: $e');
+      return null;
+    }
+  }
+
+  // Removed unused '_onRideSelected' method to resolve the compile error.
 
   @override
   Widget build(BuildContext context) {
+    final args = ModalRoute.of(context)?.settings.arguments as Map<String, mp.Position>?;
 
-    return  Scaffold(
-      
+    if (args != null) {
+      final origin = args['origin']!;
+      final destination = args['destination']!;
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        _showRouteOnMap(origin, destination);
+      });
+    }
+
+    return Scaffold(
       body: Stack(
-
         children: [
-
-          //map
-
+          // Mapbox Map
           mp.MapWidget(
-
-            onMapCreated: _onMapCreated
-
+            onMapCreated: (controller) {
+              print("MapWidget created successfully");
+              _onMapCreated(controller);
+            },
+            styleUri: mp.MapboxStyles.MAPBOX_STREETS,
           ),
-          
-            //searchbar
-
-          //  Positioned(
-          //     top: 20,
-          //   left: 20,
-          //   right: 20,
-          //   child: Container(
-          //     padding: const EdgeInsets.symmetric(horizontal: 16),
-          //     decoration: BoxDecoration(
-          //       color: Colors.white,
-          //       borderRadius: BorderRadius.circular(8),
-          //       boxShadow: [
-          //         BoxShadow(
-          //           color: Colors.black.withOpacity(0.1),
-          //           blurRadius: 10,
-          //           offset: const Offset(0, 5),
-          //         ),
-          //       ],
-          //     ),
-          //     child: Row(
-          //       children: [
-          //         const Icon(Icons.search, color: Colors.grey),
-          //         const SizedBox(width: 10),
-          //         Expanded(
-          //           child: TextField(
-          //             decoration: const InputDecoration(
-          //               hintText: 'Search for a ride...',
-          //               border: InputBorder.none,
-          //             ),
-          //             onChanged: (value) {
-          //               // Handle search input
-          //             },
-          //           ),
-          //         ),
-          //       ],
-          //     ),
-          //   ),
-          // ),
-
-            // Ride Options
-
+          // Overlay UI
+          Positioned(
+            top: 50,
+            left: 20,
+            right: 20,
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const Text(
+                  "Welcome to Journey Mate",
+                  style: TextStyle(
+                    fontSize: 24,
+                    color: const ui.Color.fromARGB(255, 187, 90, 90),
+                  ),
+                ),
+                const SizedBox(height: 10),
+                ElevatedButton(
+                  onPressed: () {
+                    Navigator.push(
+                      context,
+                      MaterialPageRoute(builder: (context) => SearchRidePage()),
+                    );
+                  },
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: Colors.teal,
+                    padding: const EdgeInsets.all(10),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(50),
+                    ),
+                    elevation: 10,
+                    shadowColor: Colors.teal.withOpacity(0.5),
+                  ),
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: const [
+                      Icon(
+                        Icons.search,
+                        color: Colors.white,
+                        size: 24,
+                      ),
+                      SizedBox(width: 10),
+                      Text(
+                        "Search",
+                        style: TextStyle(
+                          fontSize: 18,
+                          fontWeight: FontWeight.bold,
+                          color: Colors.white,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+          ),
+          // Ride List
           Positioned(
             bottom: 0,
             left: 0,
@@ -245,38 +505,169 @@ class _HomeScreenState extends State<HomeScreen> {
                   ),
                 ],
               ),
-              child: ListView(
-                padding: const EdgeInsets.all(16),
-                children: [
-                  ListTile(
-                    leading: const Icon(Icons.directions_car, color: Colors.blue),
-                    title: const Text('Ride to City Center'),
-                    subtitle: const Text('Driver: John Doe'),
-                    trailing: const Text('\$10'),
-                    onTap: () {
-                      // Handle ride selection
+              child: StreamBuilder<List<RideModel>>(
+                stream: rideStream,
+                builder: (context, snapshot) {
+                  if (snapshot.connectionState == ConnectionState.waiting) {
+                    return const Center(child: CircularProgressIndicator());
+                  }
+
+                  if (!snapshot.hasData || snapshot.data!.isEmpty) {
+                    return const Center(child: Text("No active rides found."));
+                  }
+
+                  final rides = snapshot.data!;
+
+                  return ListView.builder(
+                    itemCount: rides.length,
+                    itemBuilder: (context, index) {
+                      final ride = rides[index];
+                      return Card(
+                        child: ListTile(
+                          title: Text('${ride.origin} ➝ ${ride.destination}'),
+                          subtitle: Text(
+                            '${ride.journeyDate.toLocal().toString().split(" ")[0]} at ${ride.journeyTime} | ₹${ride.price}',
+                          ),
+                          trailing: Text('${ride.seatsAvailable} seats'),
+                          onTap: () {
+                            debugPrint('Ride selected: ${ride.toMap()}');
+                            _showRouteOnMap(
+                              mp.Position(ride.originLng, ride.originLat),
+                              mp.Position(ride.destinationLng, ride.destinationLat),
+                              //mp.Position(77.5946, 12.9716), // Example origin (Bangalore)
+                              //mp.Position(77.6099, 12.9346), // Example destination
+                            );
+                          },
+                        ),
+                      );
                     },
-                  ),
-                  ListTile(
-                    leading: const Icon(Icons.directions_car, color: Colors.green),
-                    title: const Text('Ride to Airport'),
-                    subtitle: const Text('Driver: Jane Smith'),
-                    trailing: const Text('\$20'),
-                    onTap: () {
-                      // Handle ride selection
-                    },
-                  ),
-                  // Add more ride options here
-                ],
+                  );
+                },
               ),
             ),
           ),
-
         ],
-
-      )
-      
+      ),
+      bottomNavigationBar: BottomNavigationBar(
+        currentIndex: 0, // Update this dynamically based on the selected tab
+        onTap: (index) async {
+          switch (index) {
+            case 0:
+              // Navigate to Search Screen
+              Navigator.pushNamed(context, '/search');
+              break;
+            case 1:
+              // Navigate to Create Ride Screen
+              final result = await Navigator.pushNamed(context, '/createride');
+              if (result == true) {
+                // Refresh the ride stream after creating a ride
+                setState(() {
+                  rideStream = RideService().getAvailableRides();
+                });
+              }
+              break;
+            case 2:
+              // Navigate to Your Rides Screen
+              await _fetchUserRidesAndNavigate(context);
+              break;
+            case 3:
+              // Navigate to Inbox Screen
+              Navigator.pushNamed(context, '/inbox');
+              break;
+            case 4:
+              // Navigate to Profile Screen
+              Navigator.pushNamed(context, '/profile');
+              break;
+          }
+        },
+        type: BottomNavigationBarType.fixed,
+        selectedItemColor: Colors.blue,
+        unselectedItemColor: Colors.grey,
+        items: const [
+          BottomNavigationBarItem(
+            icon: Icon(Icons.search),
+            label: 'Search',
+          ),
+          BottomNavigationBarItem(
+            icon: Icon(Icons.add_circle),
+            label: 'Publish',
+          ),
+          BottomNavigationBarItem(
+            icon: Icon(Icons.directions_car),
+            label: 'Your Rides',
+          ),
+          BottomNavigationBarItem(
+            icon: Icon(Icons.chat),
+            label: 'Inbox',
+          ),
+          BottomNavigationBarItem(
+            icon: Icon(Icons.person),
+            label: 'Profile',
+          ),
+        ],
+      ),
     );
-    
+  }
+}
+
+
+final FirebaseFirestore _firestore = FirebaseFirestore.instance;
+
+Stream<List<RideModel>> getAvailableRides() async* {
+  try {
+    final ridesSnapshot = await _firestore.collection('rides').get();
+
+    //emni
+    for (var doc in ridesSnapshot.docs) {
+      debugPrint('Ride document: ${doc.data()}');
+    }
+
+    final rides = await Future.wait(ridesSnapshot.docs.map((doc) async {
+      try {
+        final rideData = doc.data();
+        String driverName = rideData['driverName'] ?? 'Unknown Driver';
+
+        // Fetch driver name from Realtime Database if missing
+        if (driverName == 'Unknown Driver') {
+          final driverId = rideData['driverId'];
+          try {
+            final driverRef = FirebaseDatabase.instance.ref().child('users').child(driverId);
+            final driverSnapshot = await driverRef.get();
+            if (driverSnapshot.exists) {
+              driverName = driverSnapshot.child('userName').value as String? ?? 'Unknown Driver';
+            }
+          } catch (e) {
+            debugPrint("Error fetching driver name from Realtime Database: $e");
+          }
+        }
+
+        // Validate and parse ride data
+        return RideModel(
+          rideId: doc.id,
+          driverId: rideData['driverId'] ?? '',
+          passengerIds: List<String>.from(rideData['passengerIds'] ?? []),
+          origin: rideData['origin'] ?? 'Unknown',
+          destination: rideData['destination'] ?? 'Unknown',
+          originLat: (rideData['originLat'] as num?)?.toDouble() ?? 0.0,
+          originLng: (rideData['originLng'] as num?)?.toDouble() ?? 0.0,
+          destinationLat: (rideData['destinationLat'] as num?)?.toDouble() ?? 0.0,
+          destinationLng: (rideData['destinationLng'] as num?)?.toDouble() ?? 0.0,
+          journeyDate: (rideData['journeyDate'] as Timestamp?)?.toDate() ?? DateTime.now(),
+          journeyTime: rideData['journeyTime'] ?? '00:00',
+          seatsAvailable: rideData['seatsAvailable'] ?? 0,
+          price: (rideData['price'] as num?)?.toDouble() ?? 0.0,
+          distance: (rideData['distance'] as num?)?.toDouble() ?? 0.0,
+          driverName: driverName,
+        );
+      } catch (e) {
+        debugPrint('Error parsing ride document: $e');
+        return null; // Skip invalid rides
+      }
+    }).toList());
+
+    yield rides.whereType<RideModel>().toList(); // Filter out null rides
+  } catch (e) {
+    debugPrint('Error fetching available rides: $e');
+    yield [];
   }
 }

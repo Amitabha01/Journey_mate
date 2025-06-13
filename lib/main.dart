@@ -1,10 +1,17 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_dotenv/flutter_dotenv.dart';
+import 'package:journey_mate_app_v1/models/ride_model.dart';
 import 'package:journey_mate_app_v1/screens/auth/signin_page.dart';
 import 'package:journey_mate_app_v1/screens/auth/signup_page.dart';
 import 'package:journey_mate_app_v1/screens/home/home_screen.dart';
+import 'package:journey_mate_app_v1/screens/rides/create_ride_screen.dart';
+import 'package:journey_mate_app_v1/screens/rides/ride_details_screen.dart';
+import 'package:journey_mate_app_v1/screens/profile/profile_screen.dart';
+import 'package:journey_mate_app_v1/screens/rides/confirm_booking_screen.dart';
 import 'package:firebase_core/firebase_core.dart';
+import 'package:firebase_auth/firebase_auth.dart';
 import 'package:mapbox_maps_flutter/mapbox_maps_flutter.dart';
+import 'package:journey_mate_app_v1/screens/rides/your_rides_screen.dart';
 import 'firebase_options.dart';
 
 
@@ -26,7 +33,10 @@ void main() async{
 
   await setup();  //?!??
 
-  runApp(const MainApp());
+  final User? currentUser = FirebaseAuth.instance.currentUser;
+
+
+  runApp(MainApp(initialRoute: currentUser == null ? '/signin' : '/homescreen'));
 }
 
 Future<void> setup() async {
@@ -43,24 +53,48 @@ Future<void> setup() async {
 }
 
 class MainApp extends StatelessWidget {
-  const MainApp({super.key});
+  final String initialRoute;
+
+  const MainApp({super.key, required this.initialRoute});
 
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
       debugShowCheckedModeBanner: false,
-      title: 'Journey mate',
+      initialRoute: initialRoute,
       
-      home: const HomeScreen(),
-        //SigninPage(),
-      
-        initialRoute: '/homescreen',
+        //initialRoute: '/signin',
           routes: {
           '/signin': (context) => const SigninPage(),
           '/signup': (context) => const SignupPage(),
           '/homescreen': (context) => const HomeScreen(),
+          '/createride': (context) => const CreateRideScreen(),
+          '/profile': (context) => const ProfileScreen(),
+          '/ridedetails': (context) {
+            final args = ModalRoute.of(context)!.settings.arguments as Map<String, dynamic>;
+            return RideDetailsScreen(ride: args['ride']);
+          },
+
+          '/confirmBooking': (context) {
+            final args = ModalRoute.of(context)!.settings.arguments as Map<String, dynamic>;
+            return ConfirmBookingScreen(ride: args['ride']);
+          },
+
+          '/yourrides': (context) => YourRidesScreen(rides: []), // Pass actual rides dynamically
+
+          //'/index': (context) => const InboxScreen(), 
           // Add other routes here
           }, 
+
+          onGenerateRoute: (settings) {
+          if (settings.name == '/ridedetails') {
+            final ride = settings.arguments as RideModel;
+            return MaterialPageRoute(
+            builder: (context) => RideDetailsScreen(ride: ride),
+          );
+        }
+        return null;
+      },
           
     );
   }
