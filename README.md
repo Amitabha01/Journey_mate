@@ -1,6 +1,7 @@
-# Journey Mate App 🚗🌍
+# Journey Mate App 🚗🌍  
+A carpooling application.
 
-Welcome to **Journey Mate App**, a Flutter-based application designed to revolutionize your travel experience. Whether you're looking to create rides, search for available rides, or chat with fellow travelers, Journey Mate App has got you covered. This app is built with cutting-edge technologies and offers seamless integration with Firebase, Mapbox, and other powerful tools.
+Welcome to **Journey Mate App**, a carpooling application designed to revolutionize your travel experience while contributing to a cleaner and greener environment. By promoting carpooling, Journey Mate App helps reduce pollution, conserve energy, and build a community of eco-conscious travelers. Whether you're looking to create rides, search for available rides, or chat with fellow travelers, Journey Mate App has got you covered. This app is built with cutting-edge technologies and offers seamless integration with Firebase, maps, and other powerful tools.
 
 ---
 
@@ -10,11 +11,16 @@ Welcome to **Journey Mate App**, a Flutter-based application designed to revolut
 - **User Authentication**: Secure login and signup using Firebase Authentication.
 - **Ride Creation**: Create rides with detailed information like origin, destination, date, time, and price.
 - **Ride Search**: Search for available rides based on your preferences.
-- **Live Map Integration**: View rides and user locations on an interactive Mapbox map.
+- **Live Map Integration**: View rides and user locations on an interactive map.
 - **Chat System**: Communicate with other users via real-time chat for each ride.
 - **Profile Management**: View and manage your profile details, including profile picture and car details.
 - **Booking Confirmation**: Confirm your ride bookings with ease.
-- **Admin Controls**: Manage users, block/unblock accounts, and verify user profiles.(Pending...)
+- **Admin Controls**: Manage users, block/unblock accounts, and verify user profiles.
+
+### 🌱 Environmental Impact
+- **Reduce Pollution**: By encouraging carpooling, Journey Mate App helps reduce the number of vehicles on the road, lowering carbon emissions and air pollution.
+- **Energy Efficiency**: Shared rides optimize fuel consumption, contributing to energy conservation.
+- **Community Contribution**: Promotes eco-friendly travel habits and builds a community of environmentally conscious travelers.
 
 ### 🌐 Multi-Platform Support
 - **Android**: Optimized for Android devices.
@@ -89,7 +95,7 @@ lib/
 | - UI Components     |       | - Authentication    |       | - Mapbox API        |
 | - Screens           |       | - Firestore DB      |       | - Geocoding         |
 | - Widgets           |       | - Realtime DB       |       | - Directions        |
-|                     |       | - Firebase          |Storage  |       |                     |
+|                     |       | - Firebase          |Storage|       |             |
 +---------------------+       +---------------------+       +---------------------+
 
         |                           |                           |
@@ -163,47 +169,39 @@ lib/
 Here are some screenshots of the Journey Mate App to give you a glimpse of its features and design. Replace the placeholder text with actual screenshots when available.
 
 ### Home Screen
-![Home Screen](assets/screenshots/home_screen.png)
+![Home Screen](assets/screenshots/home_screen.jpg)
 - **Description**: The home screen provides an overview of the app, including quick access to ride creation, ride search, and user profile.
 
 ### Login Screen
-![Login Screen](assets/screenshots/login_screen.png)
+![Login Screen](assets/screenshots/login_screen.jpg)
 - **Description**: The login screen allows users to securely log in using their credentials.
 
 ### Signup Screen
-![Signup Screen](assets/screenshots/signup_screen.png)
+![Signup Screen](assets/screenshots/signup_screen.jpg)
 - **Description**: The signup screen enables new users to create an account with required details.
 
 ### Profile Screen
-![Profile Screen](assets/screenshots/profile_screen.png)
+![Profile Screen](assets/screenshots/profile_screen.jpg)
 - **Description**: The profile screen displays user information, including name, email, and car details. Users can edit their profile here.
 
 ### Ride Creation Screen
-![Ride Creation Screen](assets/screenshots/ride_creation_screen.png)
+![Ride Creation Screen](assets/screenshots/ride_creation_screen.jpg)
 - **Description**: The ride creation screen allows users to create a new ride by entering details like origin, destination, date, and time.
 
 ### Ride Search Screen
-![Ride Search Screen](assets/screenshots/ride_search_screen.png)
+![Ride Search Screen](assets/screenshots/ride_search_screen.jpg)
 - **Description**: The ride search screen helps users find available rides based on their preferences.
 
 ### Chat Screen
-![Chat Screen](assets/screenshots/chat_screen.png)
+![Chat Screen](assets/screenshots/chat_screen.jpg)
 - **Description**: The chat screen enables real-time communication between users for a specific ride.
 
 ### Booking Confirmation Screen
-![Booking Confirmation Screen](assets/screenshots/booking_confirmation_screen.png)
+![Booking Confirmation Screen](assets/screenshots/booking_confirmation_screen.jpg)
 - **Description**: The booking confirmation screen allows users to confirm their ride bookings and view ride details.
 
 ---
 
-To add screenshots:
-1. Save your screenshots in the `assets/screenshots/` directory.
-2. Replace the placeholder image paths (`assets/screenshots/...`) with the actual file names.
-
-For example:
-```markdown
-![Home Screen](assets/screenshots/home_screen.png)
-```
 
 ---
 
