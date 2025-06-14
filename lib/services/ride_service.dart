@@ -58,6 +58,8 @@ class RideService {
       return RideModel(
         rideId: doc.id,
         driverId: rideData['driverId'],
+        //bookerId: rideData['bookerId'], // Add the required bookerId argument
+        creatorId: rideData['creatorId'], // Add the required creatorId argument
         passengerIds: List<String>.from(rideData['passengerIds'] ?? []),
         origin: rideData['origin'],
         destination: rideData['destination'],

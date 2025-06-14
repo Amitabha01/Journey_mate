@@ -23,7 +23,7 @@ import 'package:permission_handler/permission_handler.dart';
 
 import '../../services/ride_service.dart';
 import '../../models/ride_model.dart';
-import '../rides/your_rides_screen.dart' as rides_screen;
+//import '../rides/your_rides_screen.dart' as rides_screen;
 import '../rides/search_ride_screen.dart';
 
 
@@ -38,6 +38,7 @@ class HomeScreen extends StatefulWidget {
 
 class _HomeScreenState extends State<HomeScreen> {
   mp.MapboxMap? mapboxMapController;
+  RideModel? _selectedRide; // Track the currently selected ride
 
   StreamSubscription? userPositionStream;
 
@@ -56,6 +57,10 @@ class _HomeScreenState extends State<HomeScreen> {
   @override
   void initState() {
     super.initState();
+
+    // Check if the user is logged in
+    _checkUserLoggedIn();
+
     print("HomeScreen initialized");
 
     _setupPositionTraking(); // Requesting location permission
@@ -64,40 +69,86 @@ class _HomeScreenState extends State<HomeScreen> {
     rideStream = RideService().getAvailableRides(); // Initialize the ride stream
   }
 
-  Future<void> _fetchRides() async {
+  Future<void> _checkUserLoggedIn() async {
+    final currentUser = FirebaseAuth.instance.currentUser;
 
+    if (currentUser == null) {
+      // If the user is not logged in, redirect to the SignInPage
+      if (mounted) {
+        Navigator.pushNamedAndRemoveUntil(context, '/signin', (route) => false);
+      }
+    }
+  }
+
+  Future<void> _fetchRides() async {
     final commonMethods = CommonMethods();
 
     // Check internet connectivity
     await commonMethods.checkConnectivity(context);
-    
 
-    _rideService.getAvailableRides().listen((rides) {
-      final now = DateTime.now();
+    final currentUser = FirebaseAuth.instance.currentUser;
+    if (currentUser == null) {
+      debugPrint('No user is logged in.');
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('User not logged in')),
+      );
+      return;
+    }
 
-      // Debug log to confirm rides are being fetched
-      logger.i('Fetched rides: ${rides.length}');
+    final userId = currentUser.uid;
+    final now = DateTime.now();
 
-      for (var ride in rides) {
-        logger.i('Ride: ${ride.toMap()}'); // Assuming this logger is from ride_model
-      }
-      
-      // Filter out expired rides
-      final nonExpiredRides = rides.where((ride) {
+    try {
+      // Fetch active confirmed rides for the current user
+      final confirmedRidesSnapshot = await FirebaseFirestore.instance
+          .collection('confirmedRides')
+          .where('passengerId', isEqualTo: userId)
+          .get();
+
+      final confirmedRides = confirmedRidesSnapshot.docs.map((doc) => RideModel.fromMap(doc.data())).toList();
+
+      // Filter out expired confirmed rides
+      final activeConfirmedRides = confirmedRides.where((ride) {
         final rideDateTime = DateTime.parse('${ride.journeyDate} ${ride.journeyTime}');
-        return rideDateTime.isAfter(now);
+        return rideDateTime.isAfter(now); // Only include future rides
       }).toList();
 
-      // Debug log to confirm filtering
-      logger.i('Non-expired rides: ${nonExpiredRides.length}');
+      if (activeConfirmedRides.isNotEmpty) {
+        // If there are active confirmed rides, show only these
+        activeConfirmedRides.sort((a, b) {
+          final aDateTime = DateTime.parse('${a.journeyDate} ${a.journeyTime}');
+          final bDateTime = DateTime.parse('${b.journeyDate} ${b.journeyTime}');
+          return aDateTime.compareTo(bDateTime); // Sort by closest date and time
+        });
 
-      setState(() {
-        _rides = nonExpiredRides;
+        setState(() {
+          _rides = activeConfirmedRides;
+        });
 
-        // Debug log to confirm the rides list
-        logger.i('Updated _rides list: $_rides');
+        debugPrint('Showing active confirmed rides: ${_rides.length}');
+        return;
+      }
+
+      // If no active confirmed rides, fetch all active rides
+      _rideService.getAvailableRides().listen((rides) {
+        // Filter out expired rides
+        final nonExpiredRides = rides.where((ride) {
+          final rideDateTime = DateTime.parse('${ride.journeyDate} ${ride.journeyTime}');
+          return rideDateTime.isAfter(now);
+        }).toList();
+
+        setState(() {
+          _rides = nonExpiredRides;
+        });
+
+        debugPrint('Showing all active rides: ${_rides.length}');
       });
-    });
+    } catch (e) {
+      debugPrint('Error fetching rides: $e');
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Failed to fetch rides')),
+      );
+    }
   }
 
 
@@ -135,12 +186,7 @@ class _HomeScreenState extends State<HomeScreen> {
       }
 
       if (context.mounted) {
-        Navigator.push(
-          context,
-          MaterialPageRoute(
-            builder: (_) => rides_screen.YourRidesScreen(rides: userRides),
-          ),
-        );
+        Navigator.pushNamed(context, '/yourrides');
       }
     } catch (e) {
       debugPrint('Error fetching user rides: $e');
@@ -280,12 +326,20 @@ class _HomeScreenState extends State<HomeScreen> {
     // Markers and routes will now be dynamically added using `_showRouteOnMap`
   }
 
-  Future<void> _showRouteOnMap(mp.Position origin, mp.Position destination) async {
+  Future<void> _showRouteOnMap(mp.Position origin, mp.Position destination, {bool clearOnly = false}) async {
     if (mapboxMapController == null) {
-      
       debugPrint('MapboxMapController is not initialized');
-
       return;
+    }
+
+    // Clear existing annotations (markers and polylines)
+    final annotationManager = await mapboxMapController?.annotations.createPointAnnotationManager();
+    if (annotationManager != null) {
+      await annotationManager.deleteAll();
+    }
+
+    if (clearOnly) {
+      return; // If only clearing is requested, exit here
     }
 
     // Add markers for origin and destination
@@ -298,7 +352,7 @@ class _HomeScreenState extends State<HomeScreen> {
       image: await loadHQRedMarkerImage(),
     );
     pointAnnotationManager?.create(originMarker);
-
+                                                                                                                                               
     // Add destination marker
     final destinationMarker = mp.PointAnnotationOptions(
       geometry: mp.Point(coordinates: destination),
@@ -321,46 +375,44 @@ class _HomeScreenState extends State<HomeScreen> {
       );
       lineAnnotationManager?.create(lineOptions);
 
-      // Calculate the center point of the route
-      final double centerLat = (origin.lat + destination.lat) / 2;
-      final double centerLng = (origin.lng + destination.lng) / 2;
-
-      // Calculate the zoom level based on the distance between origin and destination
-      final double distance = gl.Geolocator.distanceBetween(
-        origin.lat.toDouble(),
-        origin.lng.toDouble(),
-        destination.lat.toDouble(),
-        destination.lng.toDouble(),
-      );
-      final double zoomLevel = _calculateZoomLevel(distance);
-
-      // Adjust the camera to focus on the route
-      mapboxMapController?.flyTo(
-        mp.CameraOptions(
-          center: mp.Point(coordinates: mp.Position(centerLng, centerLat)),
-          zoom: zoomLevel,
+      // Automatically adjust the camera to fit the route
+      final cameraOptions = await mapboxMapController?.cameraForCoordinates(
+        coordinates.map((pos) => mp.Point(coordinates: pos)).toList(),
+        mp.MbxEdgeInsets(
+          top: 50.0,
+          bottom: 50.0,
+          left: 50.0,
+          right: 50.0,
         ),
-        mp.MapAnimationOptions(duration: 1000),
+        0.0, // Default bearing
+        0.0  // Default pitch
       );
+
+      if (cameraOptions != null) {
+        mapboxMapController?.flyTo(
+          cameraOptions,
+          mp.MapAnimationOptions(duration: 1000),
+        );
+      }
     }
   }
 
   // Helper method to calculate zoom level based on distance
-  double _calculateZoomLevel(double distance) {
-    if (distance < 1000) {
-      return 14.0; // Close range
-    } else if (distance < 5000) {
-      return 12.0; // Medium range
-    } else if (distance < 10000) {
-      return 10.0; // Long range
-    } else {
-      return 8.0; // Very long range
-    }
-  }
+  // double _calculateZoomLevel(double distance) {
+  //   if (distance < 1000) {
+  //     return 14.0; // Close range
+  //   } else if (distance < 5000) {
+  //     return 12.0; // Medium range
+  //   } else if (distance < 10000) {
+  //     return 10.0; // Long range
+  //   } else {
+  //     return 8.0; // Very long range
+  //   }
+  // }
 
   // Dummy implementation of _fetchRoute. Replace with actual API call if needed.
   Future<Map<String, dynamic>?> _fetchRoute(mp.Position origin, mp.Position destination) async {
-    debugPrint('Fetching route: Origin = $origin, Destination = $destination');
+    debugPrint('Fetching route: Origin = (${origin.lng}, ${origin.lat}), Destination = (${destination.lng}, ${destination.lat})');
     final url =
         'https://api.mapbox.com/directions/v5/mapbox/driving/${origin.lng},${origin.lat};${destination.lng},${destination.lat}?geometries=geojson&access_token=$mapboxApiKey';
 
@@ -386,7 +438,7 @@ class _HomeScreenState extends State<HomeScreen> {
         final distance = route['distance'] / 1000; // Convert to kilometers
         final duration = route['duration'] / 60; // Convert to minutes
 
-         debugPrint('Route fetched successfully: Distance = $distance km, Duration = $duration mins');
+        logger.i('Route fetched successfully: Distance = $distance km, Duration = $duration mins');
 
         return {
           //'coordinates': coordinates.map((coord) => mp.Position(coord[0], coord[1])).toList(),
@@ -522,21 +574,78 @@ class _HomeScreenState extends State<HomeScreen> {
                     itemCount: rides.length,
                     itemBuilder: (context, index) {
                       final ride = rides[index];
+                      final isConfirmed = ride.label == "Confirmed"; // Check if the ride is confirmed
+
                       return Card(
+                        color: isConfirmed ? Colors.teal.withOpacity(0.1) : Colors.white, // Highlight confirmed rides
+                        elevation: isConfirmed ? 5 : 2, // Add elevation for confirmed rides
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(10),
+                          side: isConfirmed
+                              ? const BorderSide(color: Colors.teal, width: 2) // Add border for confirmed rides
+                              : BorderSide.none,
+                        ),
                         child: ListTile(
-                          title: Text('${ride.origin} ➝ ${ride.destination}'),
-                          subtitle: Text(
-                            '${ride.journeyDate.toLocal().toString().split(" ")[0]} at ${ride.journeyTime} | ₹${ride.price}',
+                          leading: isConfirmed
+                              ? const Icon(Icons.check_circle, color: Colors.teal, size: 30) // Add icon for confirmed rides
+                              : const Icon(Icons.directions_car, color: Colors.grey, size: 30),
+                          title: Text(
+                            '${ride.origin} ➝ ${ride.destination}',
+                            style: TextStyle(
+                              fontWeight: isConfirmed ? FontWeight.bold : FontWeight.normal,
+                              color: isConfirmed ? Colors.teal : Colors.black,
+                            ),
+                          ),
+                          subtitle: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                '${ride.journeyDate.toLocal().toString().split(" ")[0]} at ${ride.journeyTime} | ₹${ride.price}',
+                              ),
+                              if (isConfirmed)
+                                const Text(
+                                  "Confirmed",
+                                  style: TextStyle(
+                                    color: Colors.teal,
+                                    fontWeight: FontWeight.bold,
+                                  ),
+                                ),
+                            ],
                           ),
                           trailing: Text('${ride.seatsAvailable} seats'),
                           onTap: () {
-                            debugPrint('Ride selected: ${ride.toMap()}');
-                            _showRouteOnMap(
-                              mp.Position(ride.originLng, ride.originLat),
-                              mp.Position(ride.destinationLng, ride.destinationLat),
-                              //mp.Position(77.5946, 12.9716), // Example origin (Bangalore)
-                              //mp.Position(77.6099, 12.9346), // Example destination
-                            );
+                            logger.i('Ride tapped: ${ride.toMap()}');
+                            logger.i('Current selected ride: ${_selectedRide?.toMap()}');
+
+                            if (ride.originLat != 0.0 &&
+                                ride.originLng != 0.0 &&
+                                ride.destinationLat != 0.0 &&
+                                ride.destinationLng != 0.0) {
+                              if (_selectedRide == ride) {
+                                // If the same ride is tapped again, clear the map
+                                logger.i('Clearing route for ride: ${ride.toMap()}');
+                                _showRouteOnMap(
+                                  mp.Position(ride.originLng, ride.originLat),
+                                  mp.Position(ride.destinationLng, ride.destinationLat),
+                                  clearOnly: true,
+                                );
+                                setState(() {
+                                  _selectedRide = null; // Deselect the ride
+                                });
+                              } else {
+                                // Show the route for the selected ride
+                                logger.i('Showing route for ride: ${ride.toMap()}');
+                                _showRouteOnMap(
+                                  mp.Position(ride.originLng, ride.originLat),
+                                  mp.Position(ride.destinationLng, ride.destinationLat),
+                                );
+                                setState(() {
+                                  _selectedRide = ride; // Update the selected ride
+                                });
+                              }
+                            } else {
+                              logger.e('Invalid coordinates for the selected ride.');
+                            }
                           },
                         ),
                       );
@@ -641,24 +750,6 @@ Stream<List<RideModel>> getAvailableRides() async* {
           }
         }
 
-        // Validate and parse ride data
-        return RideModel(
-          rideId: doc.id,
-          driverId: rideData['driverId'] ?? '',
-          passengerIds: List<String>.from(rideData['passengerIds'] ?? []),
-          origin: rideData['origin'] ?? 'Unknown',
-          destination: rideData['destination'] ?? 'Unknown',
-          originLat: (rideData['originLat'] as num?)?.toDouble() ?? 0.0,
-          originLng: (rideData['originLng'] as num?)?.toDouble() ?? 0.0,
-          destinationLat: (rideData['destinationLat'] as num?)?.toDouble() ?? 0.0,
-          destinationLng: (rideData['destinationLng'] as num?)?.toDouble() ?? 0.0,
-          journeyDate: (rideData['journeyDate'] as Timestamp?)?.toDate() ?? DateTime.now(),
-          journeyTime: rideData['journeyTime'] ?? '00:00',
-          seatsAvailable: rideData['seatsAvailable'] ?? 0,
-          price: (rideData['price'] as num?)?.toDouble() ?? 0.0,
-          distance: (rideData['distance'] as num?)?.toDouble() ?? 0.0,
-          driverName: driverName,
-        );
       } catch (e) {
         debugPrint('Error parsing ride document: $e');
         return null; // Skip invalid rides
@@ -669,5 +760,101 @@ Stream<List<RideModel>> getAvailableRides() async* {
   } catch (e) {
     debugPrint('Error fetching available rides: $e');
     yield [];
+  }
+}
+
+class DriverHomeScreen extends StatelessWidget {
+  final String driverId;
+
+  const DriverHomeScreen({Key? key, required this.driverId}) : super(key: key);
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(
+        title: const Text("Driver Home"),
+        backgroundColor: Colors.teal,
+      ),
+      body: StreamBuilder<QuerySnapshot>(
+        stream: FirebaseFirestore.instance
+            .collection('bookingRequests')
+            .where('driverId', isEqualTo: driverId)
+            .where('status', isEqualTo: 'pending') // Only show pending requests
+            .snapshots(),
+        builder: (context, snapshot) {
+          if (snapshot.connectionState == ConnectionState.waiting) {
+            return const Center(child: CircularProgressIndicator());
+          }
+
+          if (!snapshot.hasData || snapshot.data!.docs.isEmpty) {
+            return const Center(child: Text("No booking requests."));
+          }
+
+          final requests = snapshot.data!.docs;
+
+          return ListView.builder(
+            itemCount: requests.length,
+            itemBuilder: (context, index) {
+              final request = requests[index];
+              return Card(
+                child: ListTile(
+                  title: Text("From: ${request['origin']} ➝ To: ${request['destination']}"),
+                  subtitle: Text(
+                    "Date: ${request['journeyDate'].toDate().toString().split(' ')[0]} | Price: ₹${request['price']}",
+                  ),
+                  trailing: ElevatedButton(
+                    onPressed: () {
+                      _showDriverPopup(context, request);
+                    },
+                    child: const Text("Respond"),
+                  ),
+                ),
+              );
+            },
+          );
+        },
+      ),
+    );
+  }
+
+  void _showDriverPopup(BuildContext context, QueryDocumentSnapshot request) {
+    showDialog(
+      context: context,
+      builder: (BuildContext context) {
+        return AlertDialog(
+          title: const Text("Booking Request"),
+          content: Text(
+              "${request['passengerId']} is requesting a ride. Would you like to accept or reject?"),
+          actions: [
+            TextButton(
+              onPressed: () async {
+                await _updateRequestStatus(request.id, 'accepted');
+                Navigator.of(context).pop();
+                ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(content: Text("Booking request accepted.")),
+                );
+              },
+              child: const Text("Accept"),
+            ),
+            TextButton(
+              onPressed: () async {
+                await _updateRequestStatus(request.id, 'rejected');
+                Navigator.of(context).pop();
+                ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(content: Text("Booking request rejected.")),
+                );
+              },
+              child: const Text("Reject"),
+            ),
+          ],
+        );
+      },
+    );
+  }
+
+  Future<void> _updateRequestStatus(String requestId, String status) async {
+    await FirebaseFirestore.instance.collection('bookingRequests').doc(requestId).update({
+      'status': status,
+    });
   }
 }

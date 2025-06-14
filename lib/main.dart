@@ -10,9 +10,12 @@ import 'package:journey_mate_app_v1/screens/profile/profile_screen.dart';
 import 'package:journey_mate_app_v1/screens/rides/confirm_booking_screen.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:firebase_auth/firebase_auth.dart';
+import 'package:journey_mate_app_v1/screens/wrapper.dart';
 import 'package:mapbox_maps_flutter/mapbox_maps_flutter.dart';
 import 'package:journey_mate_app_v1/screens/rides/your_rides_screen.dart';
 import 'firebase_options.dart';
+import 'package:journey_mate_app_v1/screens/chat/inbox_screen.dart';
+import '../../screens/admin/rides/chat_screen.dart' as AdminChat;
 
 
 void main() async{
@@ -62,6 +65,7 @@ class MainApp extends StatelessWidget {
     return MaterialApp(
       debugShowCheckedModeBanner: false,
       initialRoute: initialRoute,
+      home: const Wrapper(),  // Useing the Wrapper widget as the home
       
         //initialRoute: '/signin',
           routes: {
@@ -77,12 +81,20 @@ class MainApp extends StatelessWidget {
 
           '/confirmBooking': (context) {
             final args = ModalRoute.of(context)!.settings.arguments as Map<String, dynamic>;
-            return ConfirmBookingScreen(ride: args['ride']);
+            return ConfirmBookingScreen(
+              ride: args['ride'],
+              currentUserId: FirebaseAuth.instance.currentUser?.uid ?? '',
+            );
           },
 
-          '/yourrides': (context) => YourRidesScreen(rides: []), // Pass actual rides dynamically
+          '/yourrides': (context) => YourRidesScreen(), // Pass actual rides dynamically
 
-          //'/index': (context) => const InboxScreen(), 
+          
+          '/inbox': (context) => const InboxScreen(), 
+          '/chatscreen': (context) {
+            final rideId = ModalRoute.of(context)!.settings.arguments as String;
+            return AdminChat.ChatScreen(rideId: rideId);
+          },
           // Add other routes here
           }, 
 

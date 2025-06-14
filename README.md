@@ -1,6 +1,6 @@
-# Journey Mate App V1 🚗🌍
+# Journey Mate App 🚗🌍
 
-Welcome to **Journey Mate App V1**, a Flutter-based application designed to revolutionize your travel experience. Whether you're looking to create rides, search for available rides, or chat with fellow travelers, Journey Mate App V1 has got you covered. This app is built with cutting-edge technologies and offers seamless integration with Firebase, Mapbox, and other powerful tools.
+Welcome to **Journey Mate App**, a Flutter-based application designed to revolutionize your travel experience. Whether you're looking to create rides, search for available rides, or chat with fellow travelers, Journey Mate App has got you covered. This app is built with cutting-edge technologies and offers seamless integration with Firebase, Mapbox, and other powerful tools.
 
 ---
 
@@ -160,7 +160,7 @@ lib/
 
 ## 📸 Screenshots
 
-Here are some screenshots of the Journey Mate App V1 to give you a glimpse of its features and design. Replace the placeholder text with actual screenshots when available.
+Here are some screenshots of the Journey Mate App to give you a glimpse of its features and design. Replace the placeholder text with actual screenshots when available.
 
 ### Home Screen
 ![Home Screen](assets/screenshots/home_screen.png)
@@ -209,7 +209,7 @@ For example:
 
 ## 🚀 Getting Started
 
-To get started with Journey Mate App V1, follow these steps:
+To get started with Journey Mate App, follow these steps:
 
 1. **Clone the repository**:
    ```bash
@@ -246,7 +246,7 @@ For detailed instructions, refer to the [documentation](docs/).
 
 ## 🤝 Contributing
 
-We welcome contributions to improve Journey Mate App V1! To contribute:
+We welcome contributions to improve Journey Mate App! To contribute:
 
 1. **Fork the repository**:
    - Click the "Fork" button at the top-right corner of the repository page.
@@ -306,4 +306,27 @@ For any inquiries or feedback, please reach out:
 
 ---
 
-Thank you for choosing Journey Mate App V1. We wish you safe and happy travels!
+Thank you for choosing Journey Mate App. We wish you safe and happy travels!
+
+---
+
+## 👥 Contributors
+
+This project is developed collaboratively by the following team members:
+
+1. **Amitabha Jana** - Project Lead & Backend Developer  
+   - **Contributions**: Led the project, developed backend services, coordinated development efforts, and worked on database integration and real-time features.
+
+2. **Rahul Kumar** - Frontend Developer  
+   - **Contributions**: Worked on UI components, screens, and overall frontend design.
+
+3. **Hrithik Bhowmik** - QA Tester  
+   - **Contributions**: Conducted extensive testing to ensure the app's functionality and quality.
+
+4. **Srilakha Bishwas** - UI/UX Designer  
+   - **Contributions**: Designed the app's user interface and provided feedback on user experience improvements.
+
+5. **Pabitra Kumar Sarkar** - Market Researcher  
+   - **Contributions**: Conducted market research and provided external insights to improve app usability and reach.
+
+---

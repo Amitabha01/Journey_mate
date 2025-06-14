@@ -262,6 +262,7 @@ class _CreateRideScreenState extends State<CreateRideScreen> {
       final ride = RideModel(
         rideId: rideId,
         driverId: _currentUser!.uid,
+        creatorId: _currentUser!.uid, // Add the required creatorId parameter
         driverName: driverName, // Fetch driverName from Firestore
         passengerIds: [],
         origin: _originController.text,
@@ -279,6 +280,7 @@ class _CreateRideScreenState extends State<CreateRideScreen> {
         originLng: _originLatLng!.longitude,
         destinationLat: _destinationLatLng!.latitude,
         destinationLng: _destinationLatLng!.longitude,
+        //bookerId: _currentUser!.uid,
       );
 
       final commonMethods = CommonMethods();
@@ -336,6 +338,15 @@ class _CreateRideScreenState extends State<CreateRideScreen> {
         Navigator.of(context).pushReplacementNamed('/homescreen');
         
       }
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Ride created successfully!')),
+      );
+    } catch (e) {
+      // Handle errors
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Failed to create ride: ${e.toString()}')),
+      );
 
     } finally {
       setState(() {
@@ -825,6 +836,8 @@ Future<void> createRide(RideModel ride, double originLat, double originLng, doub
     final rideWithDistance = RideModel(
       rideId: ride.rideId,
       driverId: ride.driverId,
+      creatorId: ride.creatorId, // Add the required creatorId parameter
+      //bookerId: ride.bookerId, // Add the required bookerId parameter
       driverName: driverName, // Add the required driverName parameter
       passengerIds: ride.passengerIds,
       origin: ride.origin,

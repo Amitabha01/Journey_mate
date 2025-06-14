@@ -21,6 +21,7 @@ class RideModel {
   final double originLat;
   final double destinationLng;
   final double destinationLat;
+  final String creatorId;
   String driverName;
   String? label;
 
@@ -40,7 +41,8 @@ class RideModel {
     required this.originLat,
     required this.destinationLng,
     required this.destinationLat,
-    String? label,
+    required this.creatorId,
+    this.label,
   });
 
   static Future<RideModel> fromFirestore(DocumentSnapshot doc) async {
@@ -51,6 +53,7 @@ class RideModel {
   }
 
   String driverName = data['driverName'] ?? 'Unknown Driver';
+  
   final driverId = data['driverId'] ?? '';
 
   try {
@@ -79,6 +82,7 @@ class RideModel {
     originLat: (data['originLat'] as num?)?.toDouble() ?? 0.0,
     destinationLng: (data['destinationLng'] as num?)?.toDouble() ?? 0.0,
     destinationLat: (data['destinationLat'] as num?)?.toDouble() ?? 0.0,
+    creatorId: data['creatorId'] ?? '',
   );
 }
 
@@ -94,7 +98,12 @@ class RideModel {
         'seatsAvailable': seatsAvailable, 
         'distance': distance, // Ensureing distance is included
         'driverName': driverName, // Ensure driverName is included
-        
+        'originLng': originLng,
+        'originLat': originLat,
+        'destinationLng': destinationLng,
+        'destinationLat': destinationLat,
+        'creatorId': creatorId,
+
       };
 
       // Fetch the driver's name dynamically from Firestore
@@ -112,4 +121,27 @@ class RideModel {
       String toString() {
         return 'RideModel{rideId: $rideId, driverId: $driverId, passengerIds: $passengerIds, origin: $origin, destination: $destination, journeyDate: $journeyDate, journeyTime: $journeyTime, price: $price, seatsAvailable: $seatsAvailable}';
       }
+
+      // Add the fromMap factory constructor
+  factory RideModel.fromMap(Map<String, dynamic> map) {
+    return RideModel(
+      rideId: map['rideId'] ?? '',
+      driverId: map['driverId'] ?? '',
+      passengerIds: List<String>.from(map['passengerIds'] ?? []),
+      origin: map['origin'] ?? 'Unknown',
+      destination: map['destination'] ?? 'Unknown',
+      journeyDate: (map['journeyDate'] as Timestamp?)?.toDate() ?? DateTime.now(),
+      journeyTime: map['journeyTime'] ?? '00:00',
+      price: (map['price'] as num?)?.toDouble() ?? 0.0,
+      seatsAvailable: map['seatsAvailable'] ?? 0,
+      distance: (map['distance'] as num?)?.toDouble() ?? 0.0,
+      driverName: map['driverName'] ?? 'Unknown Driver',
+      originLng: (map['originLng'] as num?)?.toDouble() ?? 0.0,
+      originLat: (map['originLat'] as num?)?.toDouble() ?? 0.0,
+      destinationLng: (map['destinationLng'] as num?)?.toDouble() ?? 0.0,
+      destinationLat: (map['destinationLat'] as num?)?.toDouble() ?? 0.0,
+      creatorId: map['creatorId'] ?? '',
+      label: map['label'],
+    );
+  }
 }
