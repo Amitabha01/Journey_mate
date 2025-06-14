@@ -14,7 +14,7 @@ Welcome to **Journey Mate App**, a Flutter-based application designed to revolut
 - **Chat System**: Communicate with other users via real-time chat for each ride.
 - **Profile Management**: View and manage your profile details, including profile picture and car details.
 - **Booking Confirmation**: Confirm your ride bookings with ease.
-- **Admin Controls**: Manage users, block/unblock accounts, and verify user profiles.
+- **Admin Controls**: Manage users, block/unblock accounts, and verify user profiles.(Pending...)
 
 ### 🌐 Multi-Platform Support
 - **Android**: Optimized for Android devices.
